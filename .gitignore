@@ -1,0 +1,22 @@
+# Dependencias Node
+node_modules/
+package-lock.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# Modelos pesados de Vosk (descargables)
+vosk-model*/
+*.bin
+*.model
+
+# IDEs y SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
