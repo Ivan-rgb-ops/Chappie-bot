@@ -1,58 +1,70 @@
-import queue
-import sys
+import os
 import json
+import queue
 import sounddevice as sd
 from vosk import Model, KaldiRecognizer
-from thefuzz import fuzz # Importamos thefuzz para la similitud matemática
 
-# Cola para almacenar el audio del micrófono en tiempo real
-q = queue.Queue()
+WAKE_WORDS = ("chappie", "chapi", "jarvis", "hola chappie", "che chappie")
 
-def callback(indata, frames, time, status):
-    if status:
-        print(status, file=sys.stderr)
-    q.put(bytes(indata))
+class WakeWordDetector:
+    def __init__(self, model_dir="vosk-model-small-es-0.42", sample_rate=16000):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        full_model_path = os.path.join(base_dir, model_dir)
+        if not os.path.exists(full_model_path):
+            raise FileNotFoundError(
+                f"No se encontró el modelo Vosk en: {full_model_path}. "
+                "Asegurate de copiar la carpeta vosk-model-small-es-0.42 dentro de chappie-voice/."
+            )
+        self.sample_rate = sample_rate
+        os.chdir(base_dir)
+        self.model = Model(model_dir)
+        self.audio_queue = queue.Queue()
 
-def listen_for_wake_word(model_path="vosk-model-small-es-0.42"):
-    print("Cargando el oído inteligente de Chappy...")
-    try:
-        model = Model(model_path)
-    except Exception as e:
-        print(f"Error: No se encontró la carpeta del modelo en '{model_path}'.")
-        print("Asegurate de que la carpeta del modelo esté en la misma carpeta que este script.")
-        sys.exit(1)
-        
-    recognizer = KaldiRecognizer(model, 16000)
+    def _audio_callback(self, indata, frames, time, status):
+        if status:
+            print(f"[Audio Status] {status}")
+        self.audio_queue.put(bytes(indata))
 
-    print("\n🎙️ Chappy está durmiendo... (Decí 'Chappy' para despertarlo)")
+    def listen_for_wake_word(self):
+        recognizer = KaldiRecognizer(self.model, self.sample_rate)
+        print("🎙️ Esperando palabra de activación ('Chappie' o 'Jarvis')...")
+        with sd.RawInputStream(
+            samplerate=self.sample_rate,
+            blocksize=8000,
+            dtype="int16",
+            channels=1,
+            callback=self._audio_callback,
+        ):
+            while True:
+                data = self.audio_queue.get()
+                if recognizer.AcceptWaveform(data):
+                    res = json.loads(recognizer.Result())
+                    text = res.get("text", "").lower().strip()
+                else:
+                    res = json.loads(recognizer.PartialResult())
+                    text = res.get("partial", "").lower().strip()
 
-    # Configuramos el radar inteligente
-    TARGET_WORD = "chapi"
-    MIN_SIMILARITY = 70 # Porcentaje mínimo de coincidencia aceptado
+                if any(w in text for w in WAKE_WORDS):
+                    print("⚡ ¡Wake word detectada!")
+                    return True
 
-    with sd.RawInputStream(samplerate=16000, blocksize=8000, device=None, dtype='int16',
-                           channels=1, callback=callback):
-        while True:
-            data = q.get()
-            if recognizer.AcceptWaveform(data):
-                result = json.loads(recognizer.Result())
-                text = result.get("text", "").lower()
-                
-                if text:
-                    print(f"👂 Escuchado: '{text}'")
-                    
-                    # Rompemos la oración en palabras y evaluamos cada una
-                    for word in text.split():
-                        score = fuzz.ratio(word, TARGET_WORD)
-                        
-                        # MOSTRAMOS EL PUNTAJE DE TODO PARA CALIBRAR:
-                        print(f"   -> Evaluando '{word}' contra '{TARGET_WORD}': {score}%")
-                        
-                        # Si alguna palabra alcanza o supera el 75% de similitud, activamos
-                        if score >= MIN_SIMILARITY:
-                            print(f"\n✨ [WAKE WORD DETECTADO] '{word}' coincide en un {score}% con '{TARGET_WORD}'. ¡Despertando!")
-                            return True
-
-# Bloque de prueba directa
-if __name__ == "__main__":
-    listen_for_wake_word()
+    def listen_command(self, timeout_seconds=10):
+        recognizer = KaldiRecognizer(self.model, self.sample_rate)
+        print("👂 Te escucho...")
+        with sd.RawInputStream(
+            samplerate=self.sample_rate,
+            blocksize=8000,
+            dtype="int16",
+            channels=1,
+            callback=self._audio_callback,
+        ):
+            max_Iterations = int((self.sample_rate / 8000) * timeout_seconds * 2)
+            for _ in range(max_Iterations):
+                data = self.audio_queue.get()
+                if recognizer.AcceptWaveform(data):
+                    res = json.loads(recognizer.Result())
+                    text = res.get("text", "").strip()
+                    if text:
+                        return text
+            final_res = json.loads(recognizer.FinalResult())
+            return final_res.get("text", "").strip()

@@ -1,17 +1,21 @@
 {
-  "name": "chappie-bot",
-  "version": "0.1.0",
-  "description": "Motor de bot de IA con memoria y personalidad que evoluciona con el uso (prototipo sin UI)",
-  "type": "module",
-  "main": "src/index.js",
+  "name": "ollama-service",
+  "version": "2.0.0",
+  "description": "Cerebro de Chappie-bot estilo Jarvis con Groq, fallback multi-proveedor y memoria persistente",
+  "main": "server.js",
   "scripts": {
-    "start": "node --env-file=.env src/index.js"
+    "start": "node --env-file=.env server.js",
+    "dev": "node --watch --env-file=.env server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^1.1.1",
+    "socket.io": "^4.7.5"
   },
   "engines": {
     "node": ">=20.6.0"
-  },
-  "dependencies": {
-    "express": "^5.2.1",
-    "socket.io": "^4.8.3"
   }
 }
